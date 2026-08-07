@@ -132,13 +132,15 @@ function buildKPIs(data) {
     const lob = data.filter(r => r['Case Record Type'] === 'Location Onboarding').length;
     const spvCompleted = data.filter(r => r['SPV Status'] === 'SPV completed').length;
     const noETA = data.filter(r => !r['Estimated Host Site Prep Completion Date']).length;
+    const noUnitRes = data.filter(r => r['Resident and unit information'] === 'Not yet received').length;
     
     const kpis = [
         { value: total, label: 'Total Cases' },
         { value: newDev, label: 'New Development Onboarding' },
         { value: lob, label: 'Location Onboarding' },
         { value: spvCompleted, label: 'SPV Completed' },
-        { value: noETA, label: 'Cases with No ETA' }
+        { value: noETA, label: 'Cases with No ETA' },
+        { value: noUnitRes, label: 'Missing Unit/Res Data' }
     ];
     
     document.getElementById('kpiRow').innerHTML = kpis.map(k => 
