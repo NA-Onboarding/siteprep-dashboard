@@ -132,7 +132,8 @@ function buildKPIs(data) {
     const lob = data.filter(r => r['Case Record Type'] === 'Location Onboarding').length;
     const spvCompleted = data.filter(r => r['SPV Status'] === 'SPV completed').length;
     const noETA = data.filter(r => !r['Estimated Host Site Prep Completion Date']).length;
-    const noUnitRes = data.filter(r => r['Resident and unit information'] === 'Not yet received').length;
+    const noUnitResCount = data.filter(r => r['Resident and unit information'] === 'Not yet received' || r['Resident and unit information'] === 'Received incomplete or low quality info from client').length;
+    const noUnitRes = Math.round(noUnitResCount / total * 100) + '%';
     
     const kpis = [
         { value: total, label: 'Total Cases' },
