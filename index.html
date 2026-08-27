@@ -234,12 +234,18 @@ function buildAging(data) {
 }
 
 function buildUpcoming(data) {
-    const weeks = [
-        { label: 'Week 1: Jul 22-28', start: new Date(2026,6,22), end: new Date(2026,6,28), count: 0 },
-        { label: 'Week 2: Jul 29-Aug 4', start: new Date(2026,6,29), end: new Date(2026,7,4), count: 0 },
-        { label: 'Week 3: Aug 5-11', start: new Date(2026,7,5), end: new Date(2026,7,11), count: 0 },
-        { label: 'Week 4: Aug 12-18', start: new Date(2026,7,12), end: new Date(2026,7,18), count: 0 }
-    ];
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const weeks = [];
+    for (let i = 0; i < 4; i++) {
+        const start = new Date(today);
+        start.setDate(today.getDate() + (i * 7));
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        const label = `Week ${i+1}: ${monthNames[start.getMonth()]} ${start.getDate()} - ${monthNames[end.getMonth()]} ${end.getDate()}`;
+        weeks.push({ label: label, start: start, end: end, count: 0 });
+    }
     
     data.forEach(r => {
         const d = parseDate(r['Estimated Host Site Prep Completion Date']);
