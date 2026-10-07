@@ -109,8 +109,10 @@ function parseDate(str) {
     if (parts.length !== 3) return null;
     const m = parseInt(parts[0]) - 1;
     const d = parseInt(parts[1]);
-    const y = parseInt(parts[2]);
+    let y = parseInt(parts[2]);
     if (isNaN(m) || isNaN(d) || isNaN(y)) return null;
+    // Normalize 2-digit years (e.g. 27 -> 2027). The Salesforce report uses M/D/YY.
+    if (y < 100) y += 2000;
     return new Date(y, m, d);
 }
 function buildDashboard(data) {
