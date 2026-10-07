@@ -130,9 +130,9 @@ function buildKPIs(data) {
     const total = data.length;
     const newDev = data.filter(r => r['Case Record Type'] === 'New Development Onboarding').length;
     const lob = data.filter(r => r['Case Record Type'] === 'Location Onboarding').length;
-    const spvCompleted = data.filter(r => r['SPV Status'] === 'SPV completed').length;
+    const spvCompleted = data.filter(r => r['Site prep verification status'] === 'Visit complete, site ready').length;
     const noETA = data.filter(r => !r['Estimated Host Site Prep Completion Date']).length;
-    const noUnitResCount = data.filter(r => r['Resident and unit information'] === 'Not yet received' || r['Resident and unit information'] === 'Received incomplete or low quality info from client').length;
+    const noUnitResCount = data.filter(r => r['Resident and unit information'] === 'Not yet received' || r['Resident and unit information'] === 'Received raw info from client').length;
     const noUnitRes = Math.round(noUnitResCount / total * 100) + '%';
     
     const kpis = [
@@ -404,10 +404,10 @@ function buildComplexity(data) {
     document.getElementById('complexityContent').innerHTML = html;
 }
 function buildEscalation(data) {
-    // Overdue: completion date < today AND status != SPV completed
+    // Overdue: completion date < today AND site prep not yet verified complete
     const overdue = data.filter(r => {
         const d = parseDate(r['Estimated Host Site Prep Completion Date']);
-        return d && d < TODAY && r['SPV Status'] !== 'SPV completed';
+        return d && d < TODAY && r['Site prep verification status'] !== 'Visit complete, site ready';
     });
     
     // No ETA: Cases with blank completion date
