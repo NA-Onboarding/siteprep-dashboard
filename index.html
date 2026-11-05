@@ -417,15 +417,18 @@ function buildEscalation(data) {
         !r['Estimated Host Site Prep Completion Date']
     );
     
-    // Potential Attrition: host comments contain "unresponsive"
-    const attrition = data.filter(r => 
-        (r['Site verif: Host comments'] || '').toLowerCase().includes('unresponsive')
-    );
+    // Potential Attrition: cases whose host comments ever mention "unresponsive", classified by
+    // the MOST RECENT relevant comment entry (see classifyAttritionRisk). Cases where the host
+    // has responded since the last unresponsive note drop off the list.
+    const attrition = data
+        .filter(r => /un[a-z]*sponsive/i.test(r['Site verif: Host comments'] || ''))
+        .map(r => Object.assign({}, r, { _risk: classifyAttritionRisk(r['Site verif: Host comments']) }))
+        .filter(r => r._risk);
     
     // Store data globally for filtering
     window._escalationData = { overdue, noEtaLob, attrition };
     
-    let html = `<p style="font-size:0.85rem;color:#666;margin-bottom:12px;font-style:italic;">Potential Attrition: Locations flagged with unresponsive hosts for more than a month.</p>`;
+    let html = `<p style="font-size:0.85rem;color:#666;margin-bottom:12px;font-style:italic;">Potential Attrition: locations whose latest host comments show an unresponsive host, a project on hold, or a call-out to close the case. Hosts that responded after their last unresponsive note are excluded.</p>`;
     html += `<div class="tabs">`;
     html += `<button class="tab-btn active" onclick="switchTab(event, 'tabOverdue')">Overdue (${overdue.length})</button>`;
     html += `<button class="tab-btn" onclick="switchTab(event, 'tabNoEta')">No ETA (${noEtaLob.length})</button>`;
@@ -437,6 +440,51 @@ function buildEscalation(data) {
     html += `<div class="tab-content" id="tabAttrition">${buildEscalationTab(attrition, 'attrition')}</div>`;
     
     document.getElementById('escalationContent').innerHTML = html;
+}
+
+// Split host comments into entries. Comments are written newest-first, each entry starting with
+// an M/D date at the start of a line or after ". " (some comments are a single line).
+// An undated first line (e.g. "HOST UNRESPONSIVE") is treated as the newest entry.
+function splitCommentEntries(text) {
+    const entries = [];
+    (text || '').split(/\r?\n/).forEach(line => {
+        // Split before every M/D date, then re-join dates that are mid-sentence references
+        // ("since 4/4", "last response on 6/10", "moved ETA to 8/8").
+        const segs = [];
+        line.split(/\s+(?=\d{1,2}\/\d{1,2}\b)/).forEach(seg => {
+            if (segs.length && /\b(on|since|to|by|until|from|before|after|of|the|for|than)$/i.test(segs[segs.length - 1].trim())) {
+                segs[segs.length - 1] += ' ' + seg;
+            } else segs.push(seg);
+        });
+        segs.forEach(seg => {
+            const s = seg.trim();
+            if (!s) return;
+            if (/^\d{1,2}\/\d{1,2}\b/.test(s) || entries.length === 0) entries.push(s);
+            else entries[entries.length - 1] += ' ' + s;   // continuation of previous entry
+        });
+    });
+    return entries;
+}
+
+// Returns 'Close Case' | 'On Hold' | 'Unresponsive' | null (host has responded since -> not at risk).
+// Walks entries newest -> oldest until the most recent HOST RESPONSE:
+//  - a closure callout anywhere above that point          -> 'Close Case'
+//  - else an unresponsive note above that point           -> 'Unresponsive'
+//  - else the host response itself mentions hold/pause    -> 'On Hold'
+//  - else (host responded after any unresponsive note)    -> null
+// Our own follow-ups, VMs and BDM-driven ETA moves are neutral and don't count as a response.
+function classifyAttritionRisk(text) {
+    const CLOSE = /close (the |this )?case|to be closed|needs? to (be )?close|cancel|no longer interested|not (moving|going) forward|terminat/i;
+    const HOLD  = /on hold|paus(e|ed|ing)/i;
+    const NEG   = /un[a-z]*sponsive|no response|not respond|not received (a )?response|never available|no reply/i;
+    const POS   = /host (has )?(confirmed|replied|responded|sent|asked|requested|mentioned|indicated|said|shared|provided|is waiting|waiting)|per host|host indication|pm confirmed|confirm|replied|missing item|reached out to own/i;
+    let risk = null;
+    for (const e of splitCommentEntries(text)) {
+        if (CLOSE.test(e)) return 'Close Case';
+        if (NEG.test(e)) { risk = risk || 'Unresponsive'; continue; }
+        if (POS.test(e)) return risk || (HOLD.test(e) ? 'On Hold' : null);
+    }
+    return risk;
 }
 
 function buildEscalationTab(rows, dataKey) {
@@ -455,13 +503,25 @@ function buildEscalationTab(rows, dataKey) {
     return html;
 }
 
+const RISK_STYLE = {
+    'Close Case':   'background:#fde2e1;color:#b42318;',
+    'Unresponsive': 'background:#fef0c7;color:#93370d;',
+    'On Hold':      'background:#e0eaff;color:#1d3a8a;'
+};
+const RISK_ORDER = { 'Close Case': 0, 'Unresponsive': 1, 'On Hold': 2 };
+
 function buildEscalationTable(rows) {
     if (rows.length === 0) return '<p style="padding:15px;color:#666;">No cases found.</p>';
-    let html = `<div style="max-height:400px;overflow-y:auto;"><table><tr><th>Case Number</th><th>Account Name</th><th>Owner</th><th>Record Type</th><th>Age (Days)</th></tr>`;
-    const sorted = rows.sort((a,b) => (parseInt(b['Current Status Age(Days)'])||0) - (parseInt(a['Current Status Age(Days)'])||0));
+    const hasRisk = rows.some(r => r._risk);
+    let html = `<div style="max-height:400px;overflow-y:auto;"><table><tr><th>Case Number</th><th>Account Name</th><th>Owner</th><th>Record Type</th><th>Age (Days)</th>${hasRisk ? '<th>Risk</th>' : ''}</tr>`;
+    const age = r => parseInt(r['Current Status Age(Days)']) || 0;
+    const sorted = rows.sort((a,b) => hasRisk
+        ? (RISK_ORDER[a._risk] - RISK_ORDER[b._risk]) || (age(b) - age(a))
+        : age(b) - age(a));
     sorted.forEach(r => {
         const rt = r['Case Record Type'] === 'New Development Onboarding' ? 'New Dev' : 'LOB';
-        html += `<tr><td>${r['Case Number']||''}</td><td>${r['Account Name']||''}</td><td>${r['Opportunity Owner']||''}</td><td>${rt}</td><td>${r['Current Status Age(Days)']||''}</td></tr>`;
+        const risk = hasRisk ? `<td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.78rem;font-weight:600;white-space:nowrap;${RISK_STYLE[r._risk] || ''}">${r._risk || ''}</span></td>` : '';
+        html += `<tr><td>${r['Case Number']||''}</td><td>${r['Account Name']||''}</td><td>${r['Opportunity Owner']||''}</td><td>${rt}</td><td>${r['Current Status Age(Days)']||''}</td>${risk}</tr>`;
     });
     html += `</table></div>`;
     return html;
